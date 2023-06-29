@@ -1,0 +1,652 @@
+---
+title: "thesis R syntax "
+author: "Jeroen Dekker"
+date: "2023-06-01"
+output: html_document
+---
+```{r initialisering }
+# List of packages
+packages <- c(
+  "rmarkdown", "readr", "haven", "ggplot2", "tidyr", "lcmm", "dplyr", "patchwork",
+  "lubridate", "zoo", "flexmix", "readxl", "magrittr", "car", "scales"
+)
+
+# Check and install missing packages
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg)
+    library(pkg)
+  }
+}
+
+
+```
+
+```{r making databases}
+# Reading the database file location 
+database <- read_sav("L:/Onderzoek/SP_16-707_PROactive_II/E_ResearchData/1_Students-and-researchers/2023_Jeroen_ADS-thesis_UU/01_moederbestanden-niet-analyseren/23-5-23_Database_Jeroen-Marjolein-FINAL.sav")
+
+# Reading the postcode data file
+postcode_data <- read_sav("L:/Onderzoek/SP_16-707_PROactive_II/E_ResearchData/1_Students-and-researchers/2023_Jeroen_ADS-thesis_UU/01_moederbestanden-niet-analyseren/20230524_PROactive_postcodes_ShareJeroen.sav")
+
+# Reading the SES postcode data from Excel
+ses_pc4_2019 <- read_excel("L:/Onderzoek/SP_16-707_PROactive_II/E_ResearchData/1_Students-and-researchers/2023_Jeroen_ADS-thesis_UU/01_moederbestanden-niet-analyseren/SES-postocde_overheid/ses-pc4-2019.xlsx", sheet = "Tabel 1")
+
+
+#DATE for start of covid 
+covid_datum <- as.Date("27-02-2020", format = "%d-%m-%Y")
+```
+
+```{r select the items}
+
+# List of useful variables/columns, not all are used but is still usefull infomration. 
+
+useful_variables <- c("PatientID_pseudo", "k_Leeftijd", "PatientGroep", "PatientGeslachtNr", "QuestionnaireStart", "f_tot", "f_alg", "f_cog", "f_slaap", "p_tot", "p_lich", "p_emo", "p_soc", "p_school", "p_psysoc", "self_covid_k_gevoelens", "FAS_II_4item_8_11_recoded", "FAS_II_4item_12_18_recoded", "FAS_III_6item_12_18_recoded", "FAS_III_6item_8_11_recoded", "AlgVragenlijst_V20_12_18_renamed", "AlgVragenlijst_V20_8_11_renamed", "k_alg_pro_12_18_leven", "k_alg_pro_8_11_new_leven", "k_alg_pro_12_18_new_leven", "k_alg_pro_8_11_leven", "k_alg_pro_ext_8_11_mening_leven", "k_alg_pro_ext_8_11_new_mening_leven", "k_alg_pro_ext_12_18_mening_leven", "k_alg_pro_ext_12_18_new_mening_leven", "o_alg_pro_opleiding")
+
+# Select the desired columns from the data_base
+selected_data <- data_base[ useful_variables]
+
+
+```
+
+
+
+
+
+
+```{r combining all cantril values with date}
+#making the database with patientid and all possible cantril values with their date
+
+
+# Convert the QuestionnaireStart column to a date format to be sure 
+database <- selected_data %>%
+  mutate(QuestionnaireStart = as.Date(QuestionnaireStart, format = "%d/%m/%Y"))
+
+
+#filtering completely empty rows 
+database <- database %>%
+  filter(
+    !is.na(self_covid_k_gevoelens) |
+    !is.na(AlgVragenlijst_V20_12_18_renamed) |
+    !is.na(AlgVragenlijst_V20_8_11_renamed) |
+    !is.na(k_alg_pro_12_18_leven) |
+    !is.na(k_alg_pro_8_11_new_leven) |
+    !is.na(k_alg_pro_12_18_new_leven) |
+    !is.na(k_alg_pro_8_11_leven) |
+    !is.na(k_alg_pro_ext_8_11_mening_leven) |
+    !is.na(k_alg_pro_ext_8_11_new_mening_leven) |
+    !is.na(k_alg_pro_ext_12_18_mening_leven) |
+    !is.na(k_alg_pro_ext_12_18_new_mening_leven)
+  )
+
+
+database <- database %>%
+  mutate(feeling_value = coalesce(
+    zap_labels(self_covid_k_gevoelens),
+    zap_labels(AlgVragenlijst_V20_12_18_renamed),
+    zap_labels(AlgVragenlijst_V20_8_11_renamed),
+    zap_labels(k_alg_pro_12_18_leven),
+    zap_labels(k_alg_pro_8_11_new_leven),
+    zap_labels(k_alg_pro_12_18_new_leven),
+    zap_labels(k_alg_pro_8_11_leven),
+    zap_labels(k_alg_pro_ext_8_11_mening_leven),
+    zap_labels(k_alg_pro_ext_8_11_new_mening_leven),
+    zap_labels(k_alg_pro_ext_12_18_mening_leven),
+    zap_labels(k_alg_pro_ext_12_18_new_mening_leven)
+  ))
+
+
+
+database <- database %>%
+  group_by(PatientID_pseudo) %>%
+  arrange(QuestionnaireStart) %>%
+  summarise(
+    cantril_1 = feeling_value[1],
+    cantril_1_date = QuestionnaireStart[1],
+    cantril_2 = if_else(length(feeling_value) >= 2, feeling_value[2], NA),
+    cantril_2_date = if_else(length(QuestionnaireStart) >= 2, QuestionnaireStart[2], NA),
+    cantril_3 = if_else(length(feeling_value) >= 3, feeling_value[3], NA),
+    cantril_3_date = if_else(length(QuestionnaireStart) >= 3, QuestionnaireStart[3], NA),
+    cantril_4 = if_else(length(feeling_value) >= 4, feeling_value[4], NA),
+    cantril_4_date = if_else(length(QuestionnaireStart) >= 4, QuestionnaireStart[4], NA),
+    cantril_5 = if_else(length(feeling_value) >= 5, feeling_value[5], NA),
+    cantril_5_date = if_else(length(QuestionnaireStart) >= 5, QuestionnaireStart[5], NA),
+    cantril_6 = if_else(length(feeling_value) >= 6, feeling_value[6], NA),
+    cantril_6_date = if_else(length(QuestionnaireStart) >= 6, QuestionnaireStart[6], NA),
+    cantril_7 = if_else(length(feeling_value) >= 7, feeling_value[7], NA),
+    cantril_7_date = if_else(length(QuestionnaireStart) >= 7, QuestionnaireStart[7], NA),
+    cantril_8 = if_else(length(feeling_value) >= 8, feeling_value[8], NA),
+    cantril_8_date = if_else(length(QuestionnaireStart) >= 8, QuestionnaireStart[8], NA)
+  )
+
+
+
+# Filter the rows with at least one date value before covid_datum and at least one after covid_datum
+database <- database %>%
+  filter(cantril_1_date <= covid_datum & (
+    cantril_2_date > covid_datum |
+    cantril_3_date > covid_datum |
+    cantril_4_date > covid_datum |
+    cantril_5_date > covid_datum |
+    cantril_6_date > covid_datum |
+    cantril_7_date > covid_datum |
+    cantril_8_date > covid_datum
+  ))
+
+
+#looping through the data to check and replace duplicated. 
+database <- database %>%
+  mutate(
+    cantril_2 = if_else(row_number() > 3 & cantril_1_date == cantril_2_date, cantril_3, cantril_2),
+    cantril_2_date = if_else(row_number() > 3 & cantril_1_date == cantril_2_date, cantril_3_date, cantril_2_date),
+    cantril_3 = if_else(cantril_2_date == cantril_3_date, cantril_4, cantril_3),
+    cantril_3_date = if_else(cantril_2_date == cantril_3_date, cantril_4_date, cantril_3_date),
+    cantril_4 = if_else(cantril_3_date == cantril_4_date, cantril_5, cantril_4),
+    cantril_4_date = if_else(cantril_3_date == cantril_4_date, cantril_5_date, cantril_4_date),
+    cantril_5 = if_else(cantril_4_date == cantril_5_date, cantril_6, cantril_5),
+    cantril_5_date = if_else(cantril_4_date == cantril_5_date, cantril_6_date, cantril_5_date),
+    cantril_6 = if_else(cantril_5_date == cantril_6_date, cantril_7, cantril_6),
+    cantril_6_date = if_else(cantril_5_date == cantril_6_date, cantril_7_date, cantril_6_date),
+    cantril_7 = if_else(cantril_6_date == cantril_7_date, cantril_8, cantril_7),
+    cantril_7_date = if_else(cantril_6_date == cantril_7_date, cantril_8_date, cantril_7_date)
+  )
+
+
+```
+
+
+
+
+```{r}
+#converting date object to days from 01-01-2017 
+
+starting_date=as.Date("2017-01-01")
+database_time <- database %>%
+  mutate(
+    cantril_1_days = as.integer(difftime(cantril_1_date, starting_date, units = "days")),
+    cantril_2_days = as.integer(difftime(cantril_2_date, starting_date, units = "days")),
+    cantril_3_days = as.integer(difftime(cantril_3_date, starting_date, units = "days")),
+    cantril_4_days = as.integer(difftime(cantril_4_date, starting_date, units = "days")),
+    cantril_5_days = as.integer(difftime(cantril_5_date, starting_date, units = "days")),
+    cantril_6_days = as.integer(difftime(cantril_6_date, starting_date, units = "days")),
+    cantril_7_days = as.integer(difftime(cantril_7_date, starting_date, units = "days")),
+    cantril_8_days = as.integer(difftime(cantril_8_date, starting_date, units = "days"))
+  )
+
+
+```
+
+
+
+```{r}
+# Reshape the database_TIME to a long format
+new_dataframe_long <- database_time %>%
+  pivot_longer(cols = c(cantril_1, cantril_2, cantril_3, cantril_4, cantril_5, cantril_6, cantril_7, cantril_8),
+               names_to = "time",
+               values_to = "feeling")
+
+# Change the order and values of the time variable
+new_dataframe_long <- new_dataframe_long %>%
+  mutate(
+    time = factor(time, levels = c("cantril_1", "cantril_2", "cantril_3", "cantril_4", "cantril_5", "cantril_6", "cantril_7", "cantril_8")),
+    time = as.integer(gsub("cantril_", "", time))
+  )
+
+# Assign corresponding dates to the time variable
+new_dataframe_long <- new_dataframe_long %>%
+  mutate(
+    date = case_when(
+      time == 1 ~ cantril_1_days,
+      time == 2 ~ cantril_2_days,
+      time == 3 ~ cantril_3_days,
+      time == 4 ~ cantril_4_days,
+      time == 5 ~ cantril_5_days,
+      time == 6 ~ cantril_6_days,
+      time == 7 ~ cantril_7_days,
+      time == 8 ~ cantril_8_days
+    )
+  )
+
+# Remove rows with empty or NA values in the feeling column
+new_dataframe_long <- new_dataframe_long %>%
+  filter(
+    !is.na(feeling),
+    !is.na(date)
+  )
+
+
+```
+
+
+
+
+
+```{r gmm modeling}
+# GMM using the Lcmm package 
+
+set.seed(156551)
+
+######## intercept is the different but same slope # I HAVE USED THIS ONE FOR MY RESEARCH 
+#runging the model 4 times with more latent class every time
+gmmR <-hlme( feeling ~ date, subject = "PatientID_pseudo", random=~ date , ng = 1, data =new_dataframe_long)
+
+gmmR2<- gridsearch(rep = 100, maxiter = 10, minit = gmmR, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~date,
+                          ng = 2, data = new_dataframe_long, mixture = ~ date, nwg=T))
+gmmR3<- gridsearch(rep = 100, maxiter = 10, minit = gmmR, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~date,
+                          ng = 3, data = new_dataframe_long, mixture = ~ date, nwg=T))
+gmmR4<- gridsearch(rep = 100, maxiter = 10, minit = gmmR, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~date,
+                          ng = 4, data = new_dataframe_long, mixture = ~ date, nwg=T))
+
+
+```
+
+```{r summary and adding class to the data}
+# make table with results for the all the models: 
+summarytable(gmmR,gmmR2,gmmR3, gmmR4)
+
+#choose the model with the lowest BIG score 
+chosenmodel<-gmmR2
+summary(chosenmodel)
+# Subset the data and extract desired columns
+
+class_dataset <- data.frame(PatientID_pseudo = chosenmodel$pprob$PatientID_pseudo,
+                            class = chosenmodel$pprob$class)
+# Merge the class with the rest of the dataset
+merged_data <- merge(class_dataset, database, by = "PatientID_pseudo")
+first_data<-selected_data %>%
+  group_by(PatientID_pseudo) %>%
+    slice(1)
+
+merged_data_complete <- merge( first_data,class_dataset, by = "PatientID_pseudo")
+
+
+
+```
+
+```{r}
+#making graphs about the groups 
+
+#changing some names for the figures
+merged_data_complete$PatientGroep[merged_data_complete$PatientGroep == "(Auto-)immuunziekten WKZ PRO-ACTIVE"] <- "(Auto-)immune disorder"
+merged_data_complete$PatientGroep[merged_data_complete$PatientGroep == "Algemene pediatrie WKZ PRO-ACTIVE"] <- "general paediatrics"
+merged_data_complete$PatientGroep[merged_data_complete$PatientGroep == "CF WKZ PRO-ACTIVE"] <- "Cystic fibrosis"
+merged_data_complete$PatientGroep[merged_data_complete$PatientGroep == "Congenitale hartziekten PRO-ACTIVE WKZ"] <- "Congenital heart disease"
+merged_data_complete$PatientGroep[merged_data_complete$PatientGroep == "Kindernefrologie WKZ PRO-ACTIVE"] <- "Paediatric nephrology"
+merged_data_complete$PatientGeslachtNr<-ifelse(merged_data_complete$PatientGeslachtNr == 1, "Boy", "Girl")
+names(merged_data_complete)[names(merged_data_complete) == "PatientGeslachtNr"] <- "Sex_Patient"
+
+
+
+#distribution of Patientgroup
+pie_chart <- ggplot(merged_data_complete, aes(x = "", fill = PatientGroep)) +
+  geom_bar(width = 1) +
+  coord_polar(theta = "y") +
+  labs(title = "Distribution of Patient group") +
+  theme_minimal() +
+  theme(legend.position = "right")
+print(pie_chart)
+
+# Pie chart based on the sex of the patient 
+ggplot(merged_data_complete, aes(x = "", fill = Sex_Patient)) +
+  geom_bar(width = 1) +
+  coord_polar(theta = "y") +
+  labs(title = "Distribution of gender ") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+#age distibution in both classes 
+ggplot(merged_data_complete) +
+ aes(x = "", y = k_Leeftijd) +
+ geom_boxplot(fill = "#112446") +
+ theme_minimal() +
+ facet_wrap(vars(class))
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+
+
+# Reshape the new_dataframe to a long format again to make a plot based on their trajectories 
+new_dataframe_long <- merged_data %>%
+  pivot_longer(cols = c(cantril_1, cantril_2, cantril_3, cantril_4, cantril_5,cantril_6,cantril_7,cantril_8),
+               names_to = "time",
+               values_to = "feeling")
+
+# Change the order and values of the time variable
+new_dataframe_long <- new_dataframe_long %>%
+  mutate(time = factor(time,
+                       levels = c("cantril_1", "cantril_2", "cantril_3", "cantril_4","cantril_5","cantril_6","cantril_7","cantril_8")),
+         time = as.integer(gsub("cantril_", "", time)))
+
+
+# Remove rows with empty or NA values in the feeling column
+new_dataframe_long <- new_dataframe_long %>%
+  filter(!is.na(feeling) )
+
+
+# Assign corresponding dates to the time variable
+new_dataframe_long <- new_dataframe_long %>%
+  mutate(date = case_when(
+    time == 1 ~ cantril_1_date,
+    time == 2 ~ cantril_2_date,
+    time == 3 ~ cantril_3_date,
+    time == 4 ~ cantril_4_date,
+    time == 5 ~ cantril_5_date,
+    time == 6 ~ cantril_6_date,
+    time == 7 ~ cantril_7_date,
+    time == 8 ~ cantril_8_date
+  ))
+
+
+# Remove rows with empty or NA values in the feeling column
+merged_data_long <- new_dataframe_long %>%
+  filter(!is.na(feeling) & feeling != "")
+
+
+# Create the plot, the red dotted line is the covid_date 
+ggplot(merged_data_long, aes(x = date, y = feeling, color = as.factor(class), group= PatientID_pseudo)) +
+  geom_point() +
+  geom_line( alpha=0.8) +
+  labs(x = "Date", y = "Cantril Value", color = "Class") +
+  scale_color_manual(values = c("1" = "#f8766D", "2" = "#00BFC4", "3"="green", "4"="orange","5"= "purple"))+
+geom_vline(xintercept = covid_datum, color = 'red', linetype = 'dotted', linewidth = 1) + 
+    theme_minimal() +
+    theme(legend.position = 'none', axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))  +
+    geom_line(alpha = 0.5) +
+    geom_point(alpha = 0.5) +
+    scale_y_continuous(name = "Life Satisfaction", limits = c(0,10))+
+    facet_wrap(~ class, ncol = 2)
+
+
+```
+
+
+
+```{r Ses and class}
+
+
+#merge the postcodes with the class data
+merged_data_ses<- merge(merged_data,data_base_postcode, by= "PatientID_pseudo")
+
+
+
+
+# Group by PatientID_pseudo and find the entry closest to covid_date
+Close_covid_ses <- selected_items %>%
+  filter(QuestionnaireStart < covid_datum &
+         (!is.na(FAS_III_6item_12_18_recoded) | !is.na(FAS_III_6item_8_11_recoded))) %>%
+  group_by(PatientID_pseudo) %>%
+  arrange(desc(QuestionnaireStart)) %>%
+  slice(1) %>%
+  ungroup()
+
+
+
+# Merge Close_covid_ses with merged_data_ses based on PatientID_pseudo
+merged_data_ses <- merge(merged_data_ses, Close_covid_ses, by = "PatientID_pseudo", all.x = TRUE)
+
+
+# Combine the two SES columns into a single column called SES
+merged_data_ses$SES <- ifelse(!is.na(merged_data_ses$FAS_III_6item_12_18_recoded),
+                          merged_data_ses$FAS_III_6item_12_18_recoded,
+                          merged_data_ses$FAS_III_6item_8_11_recoded)
+
+# Calculate the average (mean)
+mean_ses <- mean(merged_data_ses$SES, na.rm = TRUE)
+
+# Calculate the 95% confidence interval
+confidence_interval <- t.test(merged_data_ses$SES)$conf.int
+
+print(mean_ses) 
+print( confidence_interval)
+```
+
+
+
+
+
+```{r}
+#lets convert postcode to ses 
+
+# Create an empty column "Post_ses" in merged_data_ses
+merged_data_ses$Post_ses <- NA
+
+# Iterate over each row and fill the "Post_ses" column using ses_value
+for (i in 1:nrow(merged_data_ses)) {
+  input_postal_code <- merged_data_ses$CijfersPC_ult2019[i]
+  land <- merged_data_ses$Land[i]
+  #becasue two entries were from outside the Netherlands these were excluded 
+  if (land == "B" || land == "GB") {
+    merged_data_ses$Post_ses[i] <- NA
+  } else {
+    ses_value <- subset(data_base_sespostcode, `Tabel 1` == input_postal_code, select = `...2`)
+    ses_value <- format(as.numeric(ses_value),scientific=F)
+    merged_data_ses$Post_ses[i] <- as.numeric(ses_value)
+  }
+}
+# Calculate the average (mean)
+mean_sesp <- mean(merged_data_ses$Post_ses, na.rm = TRUE)
+
+# Calculate the 95% confidence interval
+confidence_intervalp <- t.test(merged_data_ses$Post_ses)$conf.int
+
+print(mean_sesp) 
+print( confidence_intervalp)
+```
+
+
+
+
+
+```{r}
+t_test_data<-subset(merged_data_ses,merged_data_ses$class==1|merged_data_ses$class==2)
+#check test is possible
+
+
+
+# Filter data for class 1
+class1_ses <- as.numeric(t_test_data$SES[t_test_data$class == 2])
+
+# Create histogram plot using ggplot2
+ggplot(data = data.frame(SES = class1_ses), aes(x = SES)) +
+  geom_histogram(fill = "#0072B2", color = "white", bins = 10) +
+  labs(x = "SES (HBSC) value", y = "Frequency", title = "Distribution of SES (HBSC) in Class 2") +
+  theme_minimal()
+
+
+bartlett.test(Post_ses ~ class, data = t_test_data)
+#t_test and wilcox_test
+t.test(SES ~ class, data = t_test_data)
+wilcox.test(SES ~ class, data = t_test_data)
+#leveneTest(SES ~ class, data= t_test_data)
+# Perform Fligner's test
+fligner.test(SES ~ class, data= t_test_data)
+
+
+#NOTHING IS SIGNIFICANT :(
+```
+
+
+
+
+
+```{r}
+# Boxplot with difference in SES for each class
+merged_data_ses %>%
+ ggplot() +
+  aes(x = "", y = SES ) +
+  geom_boxplot(fill = "red") +
+  theme_minimal() +
+  facet_wrap(vars(class), ncol = 4) +
+  labs(title = "Distribution of SES by Class",
+       x = "", y = "SES")
+
+# Scatter plot function with average Cantril values against SES
+lm_eqn <- function(merged_data_ses){
+    m <- lm(SES ~  rowMeans(select(merged_data_ses, cantril_2, cantril_1)), merged_data_ses);
+    eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(r)^2~"="~r2, 
+         list(a = format(unname(coef(m)[1]), digits = 2),
+              b = format(unname(coef(m)[2]), digits = 2),
+             r2 = format(summary(m)$r.squared, digits = 3)))
+    as.character(as.expression(eq));
+}
+#scatter plot with average cantil values vs SES 
+ggplot(data = merged_data_ses) +
+  aes(x = rowMeans(select(merged_data_ses, cantril_2, cantril_1)), y = SES) +
+  geom_point() +
+  geom_text(x = 4, y = 12, label = lm_eqn(merged_data_ses), parse = TRUE) +
+  theme_minimal() +
+  geom_smooth(method = "lm", se = T) +
+  labs(title = "Average Cantril Values vs. SES",
+       x = "Average Cantril Values",
+       y = "SES")
+
+# Boxplot of the difference in education level in the classes
+data <- subset(merged_data_ses, o_alg_pro_opleiding %in% c(6, 7, 8))
+merged_data_ses %>%
+ ggplot() +
+  aes(x = "", y = o_alg_pro_opleiding) +
+  geom_boxplot(fill = "red") +
+  theme_minimal() +
+  facet_wrap(vars(class)) +
+  labs(title = "Distribution of Education Level by Class",
+       x = "", y = "Education Level")
+
+# Violin plot about the distribution of SES (HBSC) between the classes
+merged_data_ses %>%
+ ggplot() +
+  aes(x = "", y = SES, fill=as.factor(class), alpha=0.2) +
+  scale_fill_manual(values=c( "#f8766D","#00BFC4"))+
+  geom_violin(adjust = 1L, scale = "area") +
+  theme_minimal() +
+  facet_wrap(vars(class)) +
+  labs(title = "Distribution of SES (HBSC) by Class",
+       x = "", y = "SES")
+
+# Equation part for the correlation of SES (HBSC) vs. SES measured by postcode
+lm_eqn2 <- function(merged_data_ses){
+    m <- lm(SES ~ Post_ses, merged_data_ses);
+    eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(r)^2~"="~r2, 
+         list(a = format(unname(coef(m)[1]), digits = 2),
+              b = format(unname(coef(m)[2]), digits = 2),
+             r2 = format(summary(m)$r.squared, digits = 3)))
+    as.character(as.expression(eq));
+}
+
+# Plot of the correlation of SES (HBSC) vs. SES measured by postcode
+merged_data_ses %>%
+  ggplot() +
+  aes(x = Post_ses, y = SES) +
+  geom_point() +
+  geom_smooth(method = "lm", se = T) +
+  theme_minimal() +
+  geom_text(x = -0.3, y = 12, label = lm_eqn2(merged_data_ses), parse = TRUE) +
+  labs(title = "Correlation of SES (HBSC) vs. SES Measured by Postcode",
+       x = "SES Measured by Postcode",
+       y = "SES (HBSC)")
+
+# Equation function for the next plot 
+lm_eqn3 <- function(merged_data_ses){
+    m <- lm(SES ~ o_alg_pro_opleiding, merged_data_ses);
+    eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(r)^2~"="~r2, 
+         list(a = format(unname(coef(m)[1]), digits = 2),
+              b = format(unname(coef(m)[2]), digits = 2),
+             r2 = format(summary(m)$r.squared, digits = 3)))
+    as.character(as.expression(eq));
+}
+
+# Plot of education level of the parents against SES measured just before COVID
+ggplot(data = subset(merged_data_ses, o_alg_pro_opleiding %in% c(6, 7, 8)), aes(x = o_alg_pro_opleiding, y = SES))+ 
+  geom_point() +
+  geom_jitter(width = 0.03, height = 0.1) +
+  geom_smooth(method = "lm", se = T) +
+  theme_minimal() +
+  geom_text(x = 6.5, y = 12, label = lm_eqn3(merged_data_ses), parse = TRUE) +
+  labs(title = "Education Level of Parents vs. SES Measured Before COVID",
+       x = "Education Level of one parent",
+       y = "SES")+
+    scale_x_continuous(breaks = c(5, 6, 7, 8), labels = c("LBO", "MBO", "HBO", "WO"))
+
+```
+```{r extra gmm options, eval=FALSE, warning=FALSE, include=FALSE}
+#ALL EXTRA GROWTH MIXTURE MODELING NOT NEEDED TO RUN
+
+#intercept and slop are random (after4_2 is extra but takes hours)
+gmm1_2 <- hlme(feeling ~ date, subject = "PatientID_pseudo", random=~1 + date, ng = 1, data =new_dataframe_long)
+gmm2_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~1 + date,
+                          ng = 2, data = new_dataframe_long, mixture = ~ date, nwg=T))
+
+gmm3_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2,
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~1 + date,
+                          ng = 3, data = new_dataframe_long, mixture = ~ date, nwg=T))
+gmm4_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2,
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~1+date,
+                          ng = 4, data = new_dataframe_long, mixture = ~ date, nwg=T))
+
+# this is extra (only if you have time)
+gmm5_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2,
+                     hlme(feeling ~ time, subject = "PatientID_pseudo", random=~1+time,
+                          ng = 5, data = new_dataframe_long, mixture = ~ time, nwg=T))
+gmm6_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2,
+                     hlme(feeling ~ time, subject = "PatientID_pseudo", random=~1+time,
+                          ng = 6, data = new_dataframe_long, mixture = ~ time, nwg=T))
+gmm7_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2,
+                     hlme(feeling ~ time, subject = "PatientID_pseudo", random=~1+time,
+                          ng = 7, data = new_dataframe_long, mixture = ~ time, nwg=T))
+gmm8_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2,
+                     hlme(feeling ~ time, subject = "PatientID_pseudo", random=~1+time,
+                          ng = 8, data = new_dataframe_long, mixture = ~ time, nwg=T))
+gmm9_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2,
+                     hlme(feeling ~ time, subject = "PatientID_pseudo", random=~1+time,
+                          ng = 9, data = new_dataframe_long, mixture = ~ time, nwg=T))
+gmm10_2 <- gridsearch(rep = 100, maxiter = 10, minit = gmm1_2,
+                     hlme(feeling ~ time, subject = "PatientID_pseudo", random=~1+time,
+                          ng = 10, data = new_dataframe_long, mixture = ~ time, nwg=T)) 
+
+
+##### intercept is same but different slope 
+gmm1 <- hlme(feeling ~ date, subject = "PatientID_pseudo", random=~1 , ng = 1, data =new_dataframe_long)
+gmm2<- gridsearch(rep = 100, maxiter = 10, minit = gmm1, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~1,
+                          ng = 2, data = new_dataframe_long, mixture = ~ date, nwg=T))
+gmm3<- gridsearch(rep = 100, maxiter = 10, minit = gmm1, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~1,
+                          ng = 3, data = new_dataframe_long, mixture = ~ date, nwg=T))
+gmm4<- gridsearch(rep = 100, maxiter = 10, minit = gmm1, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo", random=~1,
+                          ng = 4, data = new_dataframe_long, mixture = ~ date, nwg=T))
+
+
+##### slope and intercept are the same 
+lcga1 <- hlme(feeling ~ date, subject = "PatientID_pseudo",  ng = 1, data =new_dataframe_long)
+lcga2<-gridsearch(rep = 100, maxiter = 10, minit = lcga1, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo",
+                          ng = 2, data = new_dataframe_long, mixture = ~ date))
+lcga3<-gridsearch(rep = 100, maxiter = 10, minit = lcga1, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo",
+                          ng = 3, data = new_dataframe_long, mixture = ~ date))
+lcga4<-gridsearch(rep = 100, maxiter = 10, minit = lcga1, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo",
+                          ng = 4, data = new_dataframe_long, mixture = ~ date))
+lcga5<-gridsearch(rep = 100, maxiter = 10, minit = lcga1, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo",
+                          ng = 5, data = new_dataframe_long, mixture = ~ date))
+lcga6<-gridsearch(rep = 100, maxiter = 10, minit = lcga1, 
+                     hlme(feeling ~ date, subject = "PatientID_pseudo",
+                          ng = 6, data = new_dataframe_long, mixture = ~ date))
+
+```
+
+
